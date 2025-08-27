@@ -317,6 +317,7 @@ typedef enum winner winner_t;
 static bool cuP8(uPoint8 p) { return p.x <= 2 && p.y <= 2; }
 
 void run_bot(board_t* b);
+uPoint8 bot_suggest(board_t* b);
 
 /*
     Below is the actual game, and the main functionality.
@@ -518,7 +519,7 @@ void prnt_board(board_t b) {
 /// @brief Select a place
 /// @return The place
 uPoint8 place_select() {
-    printf("Select a place (E.g. \"A 1\"): ");
+    printf("Select a place (E.g. \"A1\"): ");
     char col = ' ';
     uint8_t row = 0;
     scanf("%c %d", &col, &row);
@@ -617,6 +618,11 @@ void prnt_winner(winner_t winner) {
     printf("!");
 }
 
+void prnt_suggestion(board_t* b) {
+    uPoint8 p = bot_suggest(b);
+    printf("Bot suggestion: %c%d\n", 'A' + p.x, p.y + 1);
+}
+
 /// @brief The main function
 /// @param argc Args count
 /// @param argv Args
@@ -629,6 +635,7 @@ int main(int argc, char* argv[]) {
         prnt_info();
         prnt_board(game_board);
         if(active_player == PLR_X) {
+            prnt_suggestion(&game_board);
             uPoint8 place = place_select();
             err_t err;
             if((err = place_plr(&game_board, PLR_X, place)) != ERR_SUCCESS) {
@@ -830,4 +837,61 @@ uPoint8 bot_check_win(board_t* b) {
         if(used == 2 && b->board[unused.y][unused.x] == PLR_BLANK) return unused;
     }
     return uP8(5, 5);
+}
+
+/// @brief Uses the same bot algorithms to suggest a move to the player
+/// @param b The pointer ot the board
+/// @return A suggestion as a point
+uPoint8 bot_suggest(board_t* b) {
+    // Check for any easy way to win first
+    uPoint8 p = bot_check_win(b);
+    if(cuP8(p)) {
+        return p;
+    }
+    p = bot_check_blocks(b);
+    if(cuP8(p)) {
+        return p;
+    }
+
+    float probs[3][3] = {
+        { 0.0, 0.0, 0.0 },
+        { 0.0, 0.0, 0.0 },
+        { 0.0, 0.0, 0.0 }
+    };
+
+    bot_board_t boards[3][3];
+
+    // Look at the board first, there's no point in simulating a move that isn't possible
+    for (uint8_t i = 0; i < 3; i++)
+    {
+        for (uint8_t j = 0; j < 3; j++)
+        {
+            if(b->board[i][j] == PLR_BLANK) {
+                bot_simulate_game(b, &boards[i][j], PLR_O, uP8(j, i));
+            }
+        }
+    }
+
+    for (uint8_t i = 0; i < 3; i++)
+    {
+        for (uint8_t j = 0; j < 3; j++)
+        {
+            probs[i][j] = (float)boards[i][j].wins / ((float)boards[i][j].wins + (float)boards[i][j].losses + (float)boards[i][j].ties);
+        }
+    }
+
+    uPoint8 point = uP8(0, 0);
+    float top = 0.0;
+    for (uint8_t i = 0; i < 3; i++)
+    {
+        for (uint8_t j = 0; j < 3; j++)
+        {
+            if(probs[i][j] > top && b->board[i][j] == PLR_BLANK) {
+                top = probs[i][j];
+                point = uP8(i, j);
+            }
+        }
+    }
+
+    return point;
 }
